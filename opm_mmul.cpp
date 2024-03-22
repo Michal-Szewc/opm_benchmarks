@@ -1,4 +1,4 @@
-﻿#include <stdlib.h>
+#include <stdlib.h>
 #include <malloc.h>
 #include <string.h>
 #include <stdio.h>
@@ -12,7 +12,7 @@ typedef long long int ll;
 // size of matricies
 #define SIZE 1000
 // number of threads ( set to 0 to use omp default )
-#define THREADS 0
+#define THREADS 16
 
 // print result
 #define PRINT false
@@ -69,16 +69,19 @@ void parallelMultiplyMatrix(const ll* a, const ll* b, ll* c, int m_size) {
 		// length of block's smaller dimension
 		block_size = m_size / block_num;
 		// loop to offset memory access
-		int j;
+		int i, j;
 		for (int offest = 0; offest < block_num; ++offest) {
 #if USING_OPEN_MP
-	#pragma omp for
+	#pragma omp for private(i, j) firstprivate(m_size, block_size, a, b, temp) schedule(static, 1) nowait
 #endif
-			for (int i = 0; i < block_num * block_num; ++i) {
+			for (i = 0; i < block_num * block_num; ++i) {
 				j = (i / block_num + i + offest) % block_num;
-				multiplyMatrix(a + block_size * (i / block_num) * m_size + j * block_size, (i / block_num == block_num - 1) ? m_size - block_size * (block_num - 1) : block_size,
-					b + block_size * (i % block_num) + j * block_size * m_size, (i % block_num == block_num - 1) ? m_size - block_size * (block_num - 1) : block_size,
-					temp + block_size * (i / block_num) * m_size + block_size * (i % block_num), (j == block_num - 1) ? m_size - block_size * (block_num - 1) : block_size, m_size);
+				multiplyMatrix(a + block_size * ((i / block_num) * m_size + j),
+					(i / block_num == block_num - 1) ? m_size - block_size * (block_num - 1) : block_size,
+					b + block_size * ((i % block_num) + j * m_size),
+					(i % block_num == block_num - 1) ? m_size - block_size * (block_num - 1) : block_size,
+					temp + block_size * ((i / block_num) * m_size + (i % block_num)),
+					(j == block_num - 1) ? m_size - block_size * (block_num - 1) : block_size, m_size);
 			}
 		}
 	}
@@ -117,11 +120,11 @@ int main(int argc, char* argv[])
 	ll* m1 = generate_matrix(), * m2 = generate_matrix(), * c = (ll*)calloc(SIZE * SIZE, sizeof(ll));
 
 	// calculate and measure time
-	clock_t start = clock();
+	double start = omp_get_wtime();
 	parallelMultiplyMatrix(m1, m2, c, SIZE);
-	clock_t end = clock();
+	double end = omp_get_wtime();
 
-	double time_s = (end - start) / ((double)(CLOCKS_PER_SEC));
+	double time_s = (end - start);
 
 #if PRINT
 	printf("m1:\n");
